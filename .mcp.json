@@ -2,7 +2,7 @@
   "mcpServers": {
     "chainsdata-mcp": {
       "type": "http",
-      "url": "http://localhost:3000/mcp"
+      "url": "https://chainsdata-mcp.vercel.app/mcp"
     }
   }
 }

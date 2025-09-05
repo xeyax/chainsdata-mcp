@@ -23,9 +23,14 @@ interface TokenList {
 
 function readTokenList(listName: string, chainId: number): TokenList {
   const filename = `${listName}.${chainId}.json`;
-  const filePath = path.join("token-lists", filename);
-  const fileContent = fs.readFileSync(filePath, "utf8");
-  return JSON.parse(fileContent) as TokenList;
+  const filePath = path.join(process.cwd(), "token-lists", filename);
+  
+  try {
+    const fileContent = fs.readFileSync(filePath, "utf8");
+    return JSON.parse(fileContent) as TokenList;
+  } catch (error) {
+    throw new Error(`Failed to read token list ${filename}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 const chainMapping: Record<string, number> = {
@@ -42,13 +47,26 @@ function findTokensBySymbols(
   chain: string = "Ethereum",
   list: string = "Coingecko",
 ): { tokens: Token[]; notFound?: string } {
+  if (!symbols || symbols.length === 0) {
+    throw new Error("Symbols array cannot be empty");
+  }
+
   const chainId = chainMapping[chain];
+  if (!chainId) {
+    throw new Error(`Unsupported chain: ${chain}. Supported chains: ${Object.keys(chainMapping).join(", ")}`);
+  }
+
   const tokenList = readTokenList(list, chainId);
 
   const foundTokens: Token[] = [];
   const notFoundSymbols: string[] = [];
 
   for (const symbol of symbols) {
+    if (typeof symbol !== 'string' || symbol.trim() === '') {
+      notFoundSymbols.push(String(symbol));
+      continue;
+    }
+
     const token = tokenList.tokens.find(
       (t) => t.symbol.toLowerCase() === symbol.toLowerCase(),
     );
@@ -96,15 +114,28 @@ function createServer(): McpServer {
       },
     },
     async ({ symbols, chain, list }) => {
-      const result = findTokensBySymbols(symbols, chain, list);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      try {
+        const result = findTokensBySymbols(symbols, chain, list);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: errorMessage }, null, 2),
+            },
+          ],
+          isError: true,
+        };
+      }
     },
   );
 
@@ -141,54 +172,88 @@ async function main() {
         next();
       });
 
-      // Map to store transports by session ID
-      const transports: { [sessionId: string]: StreamableHTTPServerTransport } =
-        {};
+      // Session management with cleanup
+      const transports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
+      const sessionTimers: { [sessionId: string]: NodeJS.Timeout } = {};
+      const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+      const cleanupSession = (sessionId: string) => {
+        if (transports[sessionId]) {
+          transports[sessionId].close?.();
+          delete transports[sessionId];
+        }
+        if (sessionTimers[sessionId]) {
+          clearTimeout(sessionTimers[sessionId]);
+          delete sessionTimers[sessionId];
+        }
+      };
+
+      const resetSessionTimer = (sessionId: string) => {
+        if (sessionTimers[sessionId]) {
+          clearTimeout(sessionTimers[sessionId]);
+        }
+        sessionTimers[sessionId] = setTimeout(() => {
+          console.error(`Session ${sessionId} expired due to inactivity`);
+          cleanupSession(sessionId);
+        }, SESSION_TIMEOUT);
+      };
 
       // Handle POST requests for client-to-server communication
       app.post("/mcp", async (req, res) => {
-        // Check for existing session ID
-        const sessionId = req.headers["mcp-session-id"] as string | undefined;
-        let transport: StreamableHTTPServerTransport;
+        try {
+          const sessionId = req.headers["mcp-session-id"] as string | undefined;
+          let transport: StreamableHTTPServerTransport;
 
-        if (sessionId && transports[sessionId]) {
-          // Reuse existing transport
-          transport = transports[sessionId];
-        } else if (!sessionId && req.body.method === "initialize") {
-          // New initialization request
-          transport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: () => randomUUID(),
-            onsessioninitialized: (sessionId) => {
-              // Store the transport by session ID
-              transports[sessionId] = transport;
-            },
-          });
+          if (sessionId && transports[sessionId]) {
+            // Reuse existing transport and reset its timer
+            transport = transports[sessionId];
+            resetSessionTimer(sessionId);
+          } else if (!sessionId && req.body.method === "initialize") {
+            // New initialization request
+            transport = new StreamableHTTPServerTransport({
+              sessionIdGenerator: () => randomUUID(),
+              onsessioninitialized: (sessionId) => {
+                transports[sessionId] = transport;
+                resetSessionTimer(sessionId);
+                console.error(`New MCP session initialized: ${sessionId}`);
+              },
+            });
 
-          // Clean up transport when closed
-          transport.onclose = () => {
-            if (transport.sessionId) {
-              delete transports[transport.sessionId];
-            }
-          };
+            // Clean up transport when closed
+            transport.onclose = () => {
+              if (transport.sessionId) {
+                console.error(`MCP session closed: ${transport.sessionId}`);
+                cleanupSession(transport.sessionId);
+              }
+            };
 
-          const server = createServer();
-          await server.connect(transport);
-        } else {
-          // Invalid request
-          res.status(400).json({
+            const server = createServer();
+            await server.connect(transport);
+          } else {
+            res.status(400).json({
+              jsonrpc: "2.0",
+              error: {
+                code: -32000,
+                message: "Bad Request: No valid session ID provided or not an initialize request",
+              },
+              id: null,
+            });
+            return;
+          }
+
+          await transport.handleRequest(req, res, req.body);
+        } catch (error) {
+          console.error("Error handling MCP request:", error);
+          res.status(500).json({
             jsonrpc: "2.0",
             error: {
-              code: -32000,
-              message:
-                "Bad Request: No valid session ID provided or not an initialize request",
+              code: -32603,
+              message: "Internal error",
+              data: error instanceof Error ? error.message : 'Unknown error',
             },
             id: null,
           });
-          return;
         }
-
-        // Handle the request
-        await transport.handleRequest(req, res, req.body);
       });
 
       // Reusable handler for GET and DELETE requests
@@ -196,14 +261,26 @@ async function main() {
         req: express.Request,
         res: express.Response,
       ) => {
-        const sessionId = req.headers["mcp-session-id"] as string | undefined;
-        if (!sessionId || !transports[sessionId]) {
-          res.status(400).send("Invalid or missing session ID");
-          return;
-        }
+        try {
+          const sessionId = req.headers["mcp-session-id"] as string | undefined;
+          if (!sessionId || !transports[sessionId]) {
+            res.status(400).json({
+              error: "Invalid or missing session ID",
+              sessionId: sessionId || 'missing',
+            });
+            return;
+          }
 
-        const transport = transports[sessionId];
-        await transport.handleRequest(req, res);
+          const transport = transports[sessionId];
+          resetSessionTimer(sessionId);
+          await transport.handleRequest(req, res);
+        } catch (error) {
+          console.error("Error handling session request:", error);
+          res.status(500).json({
+            error: "Internal server error",
+            details: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
       };
 
       // Handle GET requests for server-to-client notifications via SSE
@@ -212,10 +289,64 @@ async function main() {
       // Handle DELETE requests for session termination
       app.delete("/mcp", handleSessionRequest);
 
-      app.listen(port, "0.0.0.0", () => {
-        console.error(`ChainsData MCP server running on HTTP port ${port}`);
-        console.error(`Remote access URL: http://localhost:${port}/mcp`);
+      // Health check endpoint
+      app.get("/health", (req, res) => {
+        const activeSessions = Object.keys(transports).length;
+        res.json({
+          status: "healthy",
+          timestamp: new Date().toISOString(),
+          activeSessions,
+          supportedChains: Object.keys(chainMapping),
+          version: "1.0.0",
+        });
       });
+
+      // Default route for API information
+      app.get("/", (req, res) => {
+        res.json({
+          name: "ChainsData MCP Server",
+          description: "Model Context Protocol server for blockchain token data",
+          version: "1.0.0",
+          endpoints: {
+            mcp: "/mcp",
+            health: "/health",
+          },
+          supportedChains: Object.keys(chainMapping),
+        });
+      });
+
+      // Global error handler
+      app.use((error: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+        console.error("Unhandled Express error:", error);
+        res.status(500).json({
+          error: "Internal server error",
+          message: error.message,
+        });
+      });
+
+      const server = app.listen(port, "0.0.0.0", () => {
+        console.error(`ChainsData MCP server running on HTTP port ${port}`);
+        console.error(`Health check: http://localhost:${port}/health`);
+        console.error(`MCP endpoint: http://localhost:${port}/mcp`);
+      });
+
+      // Graceful shutdown
+      const shutdown = () => {
+        console.error("Received shutdown signal, cleaning up...");
+        
+        // Clean up all sessions
+        Object.keys(transports).forEach(sessionId => {
+          cleanupSession(sessionId);
+        });
+
+        server.close(() => {
+          console.error("HTTP server closed");
+          process.exit(0);
+        });
+      };
+
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
     } else {
       // Stdio mode
       const server = createServer();
