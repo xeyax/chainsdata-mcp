@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js --http",
+    "start": "node api/index.js",
     "dev": "tsc && node dist/index.js",
     "deploy": "vercel --prod",
     "preview": "vercel"
