@@ -4,8 +4,9 @@ import fs from "fs";
 import path from "path";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 
+// Token interface
 interface Token {
   chainId: number;
   address: string;
@@ -117,7 +118,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, MCP-Session-Id");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, MCP-Session-Id",
+  );
   res.setHeader("Access-Control-Expose-Headers", "MCP-Session-Id");
 
   if (req.method === "OPTIONS") {
@@ -159,7 +163,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           jsonrpc: "2.0",
           error: {
             code: -32000,
-            message: "Bad Request: No valid session ID provided or not an initialize request",
+            message:
+              "Bad Request: No valid session ID provided or not an initialize request",
           },
           id: null,
         });
@@ -195,7 +200,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error("MCP server error:", error);
     res.status(500).json({
       error: "Internal server error",
-      details: error instanceof Error ? error.message : "Unknown error"
+      details: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }
