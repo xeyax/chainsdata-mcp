@@ -30,7 +30,11 @@ function readTokenList(listName: string, chainId: number): TokenList {
 
 const chainMapping: Record<string, number> = {
   Ethereum: 1,
+  "BNB Smart Chain": 56,
+  Gnosis: 100,
+  Polygon: 137,
   Arbitrum: 42161,
+  Base: 8453,
 };
 
 function findTokensBySymbols(
