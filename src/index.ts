@@ -24,12 +24,14 @@ interface TokenList {
 function readTokenList(listName: string, chainId: number): TokenList {
   const filename = `${listName}.${chainId}.json`;
   const filePath = path.join(process.cwd(), "token-lists", filename);
-  
+
   try {
     const fileContent = fs.readFileSync(filePath, "utf8");
     return JSON.parse(fileContent) as TokenList;
   } catch (error) {
-    throw new Error(`Failed to read token list ${filename}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(
+      `Failed to read token list ${filename}: ${error instanceof Error ? error.message : "Unknown error"}`,
+    );
   }
 }
 
@@ -53,7 +55,9 @@ function findTokensBySymbols(
 
   const chainId = chainMapping[chain];
   if (!chainId) {
-    throw new Error(`Unsupported chain: ${chain}. Supported chains: ${Object.keys(chainMapping).join(", ")}`);
+    throw new Error(
+      `Unsupported chain: ${chain}. Supported chains: ${Object.keys(chainMapping).join(", ")}`,
+    );
   }
 
   const tokenList = readTokenList(list, chainId);
@@ -62,7 +66,7 @@ function findTokensBySymbols(
   const notFoundSymbols: string[] = [];
 
   for (const symbol of symbols) {
-    if (typeof symbol !== 'string' || symbol.trim() === '') {
+    if (typeof symbol !== "string" || symbol.trim() === "") {
       notFoundSymbols.push(String(symbol));
       continue;
     }
@@ -125,7 +129,8 @@ function createServer(): McpServer {
           ],
         };
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error occurred";
         return {
           content: [
             {
@@ -173,7 +178,8 @@ async function main() {
       });
 
       // Session management with cleanup
-      const transports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
+      const transports: { [sessionId: string]: StreamableHTTPServerTransport } =
+        {};
       const sessionTimers: { [sessionId: string]: NodeJS.Timeout } = {};
       const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
@@ -234,7 +240,8 @@ async function main() {
               jsonrpc: "2.0",
               error: {
                 code: -32000,
-                message: "Bad Request: No valid session ID provided or not an initialize request",
+                message:
+                  "Bad Request: No valid session ID provided or not an initialize request",
               },
               id: null,
             });
@@ -249,7 +256,7 @@ async function main() {
             error: {
               code: -32603,
               message: "Internal error",
-              data: error instanceof Error ? error.message : 'Unknown error',
+              data: error instanceof Error ? error.message : "Unknown error",
             },
             id: null,
           });
@@ -266,7 +273,7 @@ async function main() {
           if (!sessionId || !transports[sessionId]) {
             res.status(400).json({
               error: "Invalid or missing session ID",
-              sessionId: sessionId || 'missing',
+              sessionId: sessionId || "missing",
             });
             return;
           }
@@ -278,7 +285,7 @@ async function main() {
           console.error("Error handling session request:", error);
           res.status(500).json({
             error: "Internal server error",
-            details: error instanceof Error ? error.message : 'Unknown error',
+            details: error instanceof Error ? error.message : "Unknown error",
           });
         }
       };
@@ -305,7 +312,8 @@ async function main() {
       app.get("/", (req, res) => {
         res.json({
           name: "ChainsData MCP Server",
-          description: "Model Context Protocol server for blockchain token data",
+          description:
+            "Model Context Protocol server for blockchain token data",
           version: "1.0.0",
           endpoints: {
             mcp: "/mcp",
@@ -316,13 +324,20 @@ async function main() {
       });
 
       // Global error handler
-      app.use((error: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-        console.error("Unhandled Express error:", error);
-        res.status(500).json({
-          error: "Internal server error",
-          message: error.message,
-        });
-      });
+      app.use(
+        (
+          error: Error,
+          req: express.Request,
+          res: express.Response,
+          next: express.NextFunction,
+        ) => {
+          console.error("Unhandled Express error:", error);
+          res.status(500).json({
+            error: "Internal server error",
+            message: error.message,
+          });
+        },
+      );
 
       const server = app.listen(port, "0.0.0.0", () => {
         console.error(`ChainsData MCP server running on HTTP port ${port}`);
@@ -333,9 +348,9 @@ async function main() {
       // Graceful shutdown
       const shutdown = () => {
         console.error("Received shutdown signal, cleaning up...");
-        
+
         // Clean up all sessions
-        Object.keys(transports).forEach(sessionId => {
+        Object.keys(transports).forEach((sessionId) => {
           cleanupSession(sessionId);
         });
 
