@@ -9,6 +9,42 @@ A Model Context Protocol (MCP) server that provides token data from locally stor
 - **Flexible Transport**: Supports both stdio and HTTP transport modes
 - **Case-Insensitive**: Token symbol matching is case-insensitive
 
+<details>
+<summary><b>Install in Cursor</b></summary>
+
+Go to: `Settings` -> `Cursor Settings` -> `MCP` -> `Add new global MCP server`
+
+Pasting the following configuration into your Cursor `~/.cursor/mcp.json` file is the recommended approach. You may also install in a specific project by creating `.cursor/mcp.json` in your project folder. See [Cursor MCP docs](https://docs.cursor.com/context/model-context-protocol) for more info.
+
+> Since Cursor 1.0, you can click the install button below for instant one-click installation.
+
+#### Cursor Remote Server Connection
+
+[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=chainsdata-mcp&config=eyJ1cmwiOiJodHRwczovL2NoYWluc2RhdGEtbWNwLnZlcmNlbC5hcHAvbWNwIn0K)
+
+```json
+{
+  "mcpServers": {
+    "chainsdata-mcp": {
+      "url": "https://chainsdata-mcp.vercel.app/mcp",
+    }
+  }
+}
+```
+</details>
+
+<details>
+    <summary><b>Install in Claude Code</b></summary>
+
+    Run this command. See [Claude Code MCP docs](https://docs.anthropic.com/en/docs/claude-code/mcp) for more info.
+
+    #### Claude Code Remote Server Connection
+
+    ```sh
+    claude mcp add --transport http chainsdata-mcp https://chainsdata-mcp.vercel.app/mcp
+    ```
+</details>
+
 ## Installation
 
 ```bash
@@ -76,7 +112,7 @@ Get token information by providing an array of token symbols.
 
 **Parameters:**
 - `symbols` (required): Array of token symbols to search for
-- `chain` (optional): Chain name - "Ethereum" or "Arbitrum" (default: "Ethereum")  
+- `chain` (optional): Chain name - "Ethereum" or "Arbitrum" (default: "Ethereum")
 - `list` (optional): Token list name (default: "Coingecko")
 
 **Example:**
