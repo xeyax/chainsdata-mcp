@@ -31,18 +31,20 @@ Pasting the following configuration into your Cursor `~/.cursor/mcp.json` file i
   }
 }
 ```
+
 </details>
 
 <details>
-    <summary><b>Install in Claude Code</b></summary>
+<summary><b>Install in Claude Code</b></summary>
 
-    Run this command. See [Claude Code MCP docs](https://docs.anthropic.com/en/docs/claude-code/mcp) for more info.
+Run this command. See [Claude Code MCP docs](https://docs.anthropic.com/en/docs/claude-code/mcp) for more info.
 
-    #### Claude Code Remote Server Connection
+#### Claude Code Remote Server Connection
 
-    ```sh
-    claude mcp add --transport http chainsdata-mcp https://chainsdata-mcp.vercel.app/mcp
-    ```
+```sh
+claude mcp add --transport http chainsdata-mcp https://chainsdata-mcp.vercel.app/mcp
+```
+
 </details>
 
 ## Installation
