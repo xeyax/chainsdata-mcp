@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js --http",
+    "start": "node dist/index.js",
     "dev": "tsc && node dist/index.js"
   },
   "keywords": [],

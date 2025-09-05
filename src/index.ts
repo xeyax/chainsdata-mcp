@@ -149,7 +149,8 @@ function createServer(): McpServer {
 
 async function main() {
   try {
-    const useHttp = process.argv.includes("--http");
+    const useStdio = process.argv.includes("--stdio");
+    const useHttp = !useStdio;
 
     if (useHttp) {
       const app = express();
