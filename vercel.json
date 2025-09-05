@@ -1,18 +1,18 @@
 {
   "version": 2,
   "functions": {
-    "api/index.js": {
+    "api/mcp.ts": {
       "maxDuration": 30
     }
   },
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/index.js"
+      "src": "/mcp",
+      "dest": "/api/mcp.ts"
     },
     {
-      "src": "/(.*)",
-      "dest": "/api/index.js"
+      "src": "/api/mcp",
+      "dest": "/api/mcp.ts"
     }
   ],
   "env": {
