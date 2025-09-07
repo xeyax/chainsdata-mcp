@@ -1,3 +1,4 @@
+import { config } from "dotenv";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -6,6 +7,17 @@ import path from "path";
 import express from "express";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
+
+// Load environment variables from .env file
+config();
+
+// Environment variables validation
+const GRAPH_API_KEY = process.env.GRAPH_API_KEY;
+if (!GRAPH_API_KEY) {
+  console.warn(
+    "Warning: GRAPH_API_KEY not set. Using public endpoint (may have rate limits)",
+  );
+}
 
 //token interface
 interface Token {
@@ -20,6 +32,33 @@ interface Token {
 interface TokenList {
   name: string;
   tokens: Token[];
+}
+
+// Uniswap V3 Pool interfaces
+interface UniswapV3Token {
+  id: string; // Token address
+  symbol: string; // Token symbol (e.g., "WETH")
+  name: string; // Token name (e.g., "Wrapped Ether")
+  decimals: string; // Token decimals as string (from subgraph)
+}
+
+interface UniswapV3Pool {
+  id: string; // Pool address
+  feeTier: string; // Fee tier (500, 3000, 10000)
+  token0: UniswapV3Token; // First token in pair
+  token1: UniswapV3Token; // Second token in pair
+  totalValueLockedUSD: string; // TVL in USD
+  volumeUSD: string; // 24h volume in USD
+  txCount: string; // Total transaction count
+}
+
+interface UniswapV3PoolsResponse {
+  pools: UniswapV3Pool[];
+}
+
+interface SubgraphResponse {
+  data: UniswapV3PoolsResponse;
+  errors?: Array<{ message: string }>;
 }
 
 function readTokenList(listName: string, chainId: number): TokenList {
@@ -44,6 +83,17 @@ const chainMapping: Record<string, number> = {
   Arbitrum: 42161,
   Base: 8453,
 };
+
+// The Graph subgraph IDs for Uniswap V3 on different chains
+const uniswapV3SubgraphMapping: Record<string, string> = {
+  Ethereum: "5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV",
+  Polygon: "3hCPRGf4z88VC5rsBKU5AA9FBBq5nF3jbKJG7VZCbhjm",
+  Base: "HMuAwufqZ1YCRmzL2SfHTVkzZovC9VL2UAKhjvRqKiR1",
+  Arbitrum: "3V7ZY6muhxaQL5qvntX1CFXJ32W7BxXZTGTwmpH5J4t3",
+};
+
+// Supported chains for Uniswap V3 (subset of main chainMapping)
+const supportedUniswapChains = Object.keys(uniswapV3SubgraphMapping);
 
 function findTokensBySymbols(
   symbols: string[],
@@ -93,6 +143,193 @@ function findTokensBySymbols(
   return result;
 }
 
+// GraphQL query for Uniswap V3 pools
+const UNISWAP_V3_POOLS_QUERY = `
+  query GetPools($token0Symbol: String, $token1Symbol: String, $token0Name: String, $token1Name: String) {
+    pools(
+      first: 100,
+      orderBy: totalValueLockedUSD,
+      orderDirection: desc,
+      where: {
+        or: [
+          {
+            and: [
+              {
+                or: [
+                  { token0_: { symbol_contains_nocase: $token0Symbol } },
+                  { token0_: { name_contains_nocase: $token0Name } }
+                ]
+              },
+              {
+                or: [
+                  { token1_: { symbol_contains_nocase: $token1Symbol } },
+                  { token1_: { name_contains_nocase: $token1Name } }
+                ]
+              }
+            ]
+          },
+          {
+            and: [
+              {
+                or: [
+                  { token0_: { symbol_contains_nocase: $token1Symbol } },
+                  { token0_: { name_contains_nocase: $token1Name } }
+                ]
+              },
+              {
+                or: [
+                  { token1_: { symbol_contains_nocase: $token0Symbol } },
+                  { token1_: { name_contains_nocase: $token0Name } }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ) {
+      id
+      feeTier
+      totalValueLockedUSD
+      volumeUSD
+      txCount
+      token0 {
+        id
+        symbol
+        name
+        decimals
+      }
+      token1 {
+        id
+        symbol
+        name
+        decimals
+      }
+    }
+  }
+`;
+
+async function queryUniswapV3Subgraph(
+  query: string,
+  variables: Record<string, any>,
+  chainSubgraphId: string,
+  retries = 3,
+): Promise<SubgraphResponse> {
+  const baseUrl = GRAPH_API_KEY
+    ? `https://gateway.thegraph.com/api/${GRAPH_API_KEY}/subgraphs/id/${chainSubgraphId}`
+    : `https://api.thegraph.com/subgraphs/id/${chainSubgraphId}`;
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ query, variables }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data: SubgraphResponse = await response.json();
+
+      if (data.errors && data.errors.length > 0) {
+        throw new Error(
+          `GraphQL errors: ${data.errors.map((e) => e.message).join(", ")}`,
+        );
+      }
+
+      return data;
+    } catch (error) {
+      console.error(`Attempt ${attempt} failed:`, error);
+
+      if (attempt === retries) {
+        throw new Error(
+          `Failed to query subgraph after ${retries} attempts: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      }
+
+      // Exponential backoff: wait 1s, 2s, 4s between retries
+      await new Promise((resolve) =>
+        setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)),
+      );
+    }
+  }
+
+  throw new Error("Unexpected error in queryUniswapV3Subgraph");
+}
+
+async function findUniswapV3Pools(
+  token0: string,
+  token1: string,
+  chain: string = "Ethereum",
+): Promise<{
+  pools: UniswapV3Pool[];
+  metadata: { chain: string; totalResults: number };
+}> {
+  // Input validation
+  if (!token0 || !token1) {
+    throw new Error("Both token0 and token1 parameters are required");
+  }
+
+  if (typeof token0 !== "string" || typeof token1 !== "string") {
+    throw new Error("Token parameters must be strings");
+  }
+
+  // Normalize inputs
+  const normalizedToken0 = token0.trim();
+  const normalizedToken1 = token1.trim();
+
+  if (normalizedToken0 === "" || normalizedToken1 === "") {
+    throw new Error("Token parameters cannot be empty");
+  }
+
+  // Check if chain is supported for Uniswap V3
+  if (!supportedUniswapChains.includes(chain)) {
+    throw new Error(
+      `Uniswap V3 not supported on ${chain}. Supported chains: ${supportedUniswapChains.join(", ")}`,
+    );
+  }
+
+  const subgraphId = uniswapV3SubgraphMapping[chain];
+
+  try {
+    // Query the subgraph
+    const response = await queryUniswapV3Subgraph(
+      UNISWAP_V3_POOLS_QUERY,
+      {
+        token0Symbol: normalizedToken0,
+        token1Symbol: normalizedToken1,
+        token0Name: normalizedToken0,
+        token1Name: normalizedToken1,
+      },
+      subgraphId,
+    );
+
+    const pools = response.data.pools || [];
+
+    // Filter pools to ensure we have meaningful TVL (> $1000)
+    const filteredPools = pools.filter((pool) => {
+      const tvl = parseFloat(pool.totalValueLockedUSD);
+      return tvl > 1000; // Only return pools with > $1000 TVL
+    });
+
+    return {
+      pools: filteredPools,
+      metadata: {
+        chain,
+        totalResults: filteredPools.length,
+      },
+    };
+  } catch (error) {
+    throw new Error(
+      `Failed to fetch Uniswap V3 pools: ${error instanceof Error ? error.message : "Unknown error"}`,
+    );
+  }
+}
+
 function createServer(): McpServer {
   const server = new McpServer({
     name: "chainsdata-mcp",
@@ -137,6 +374,80 @@ function createServer(): McpServer {
             {
               type: "text" as const,
               text: JSON.stringify({ error: errorMessage }, null, 2),
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.registerTool(
+    "getUniswapV3Pools",
+    {
+      title: "Get Uniswap V3 Pools",
+      description:
+        "Find Uniswap V3 liquidity pools by token pairs using The Graph Protocol",
+      inputSchema: {
+        token0: z
+          .string()
+          .describe("First token symbol or name (e.g., 'WETH', 'tBTC')"),
+        token1: z
+          .string()
+          .describe("Second token symbol or name (e.g., 'USDC', 'DAI')"),
+        chain: z
+          .string()
+          .optional()
+          .default("Ethereum")
+          .describe(
+            `Chain name (optional, default: 'Ethereum'). Supported: ${supportedUniswapChains.join(", ")}`,
+          ),
+      },
+    },
+    async ({ token0, token1, chain }) => {
+      try {
+        const result = await findUniswapV3Pools(token0, token1, chain);
+
+        // Format the response with additional metadata
+        const formattedResult = {
+          ...result,
+          searchCriteria: {
+            token0,
+            token1,
+            chain,
+          },
+          timestamp: new Date().toISOString(),
+          apiInfo: {
+            source: "The Graph Protocol",
+            subgraph: "Uniswap V3",
+            endpoint: GRAPH_API_KEY ? "Authenticated Gateway" : "Public API",
+          },
+        };
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(formattedResult, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error occurred";
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  error: errorMessage,
+                  searchCriteria: { token0, token1, chain },
+                  timestamp: new Date().toISOString(),
+                },
+                null,
+                2,
+              ),
             },
           ],
           isError: true,
@@ -306,7 +617,10 @@ async function main() {
           timestamp: new Date().toISOString(),
           activeSessions,
           supportedChains: Object.keys(chainMapping),
+          uniswapV3Chains: supportedUniswapChains,
+          tools: ["getTokensBySymbols", "getUniswapV3Pools"],
           version: "1.0.0",
+          graphApiKeyConfigured: !!GRAPH_API_KEY,
         });
       });
 

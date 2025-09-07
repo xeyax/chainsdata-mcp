@@ -30,7 +30,7 @@ Returns server status, active sessions, and supported chains.
 
 ## Architecture
 
-This is a **Model Context Protocol (MCP) server** built with **Express.js** that provides blockchain token data to Claude Code for dapp development. The server exposes one primary tool: `getTokensBySymbols`.
+This is a **Model Context Protocol (MCP) server** built with **Express.js** that provides blockchain token data to Claude Code for dapp development. The server exposes two primary tools: `getTokensBySymbols` and `getUniswapV3Pools`.
 
 **Key Features:**
 - Express-based HTTP server with MCP protocol support
@@ -81,3 +81,69 @@ Each token contains: chainId, address, name, symbol, decimals, logoURI
   - CORS enabled for remote access
 
 The server is designed for integration with Claude Code's MCP system to provide real-time token data during smart contract and dapp development.
+
+## Tools
+
+### getTokensBySymbols Tool
+
+Get token information by symbols from local token lists.
+
+**Input Parameters:**
+- `symbols` (required): Array of token symbols to search for
+- `chain` (optional): Chain name, defaults to "Ethereum"
+- `list` (optional): Token list name, defaults to "Coingecko"
+
+### getUniswapV3Pools Tool
+
+Find Uniswap V3 liquidity pools by token pairs across supported networks.
+
+**Input Parameters:**
+- `token0` (required): First token symbol or name (e.g., "WETH", "tBTC", "Wrapped Bitcoin")
+- `token1` (required): Second token symbol or name (e.g., "USDC", "DAI", "USD Coin")  
+- `chain` (optional): Chain name, defaults to "Ethereum"
+  - Supported chains: Ethereum, Polygon, Base, Arbitrum
+
+**Environment Setup:**
+```bash
+export GRAPH_API_KEY=your_api_key_from_thegraph_com
+```
+
+**Usage Examples:**
+```bash
+# Find WETH/USDC pools on Ethereum
+{"tool": "getUniswapV3Pools", "token0": "WETH", "token1": "USDC"}
+
+# Find tBTC/WETH pools on Polygon
+{"tool": "getUniswapV3Pools", "token0": "tBTC", "token1": "WETH", "chain": "Polygon"}
+```
+
+**Response Format:**
+```json
+{
+  "pools": [
+    {
+      "id": "0x...",
+      "feeTier": "3000",
+      "totalValueLockedUSD": "1234567.89",
+      "volumeUSD": "987654.32", 
+      "txCount": "12345",
+      "token0": {
+        "id": "0x...",
+        "symbol": "WETH",
+        "name": "Wrapped Ether",
+        "decimals": "18"
+      },
+      "token1": {
+        "id": "0x...",
+        "symbol": "USDC", 
+        "name": "USD Coin",
+        "decimals": "6"
+      }
+    }
+  ],
+  "metadata": {
+    "chain": "Ethereum",
+    "totalResults": 5
+  }
+}
+```
