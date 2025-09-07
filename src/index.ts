@@ -527,7 +527,7 @@ async function main() {
             // Reuse existing transport and reset its timer
             transport = transports[sessionId];
             resetSessionTimer(sessionId);
-          } else if (!sessionId && req.body.method === "initialize") {
+          } else if (!sessionId || !transports[sessionId]) {
             // New initialization request
             transport = new StreamableHTTPServerTransport({
               sessionIdGenerator: () => randomUUID(),
