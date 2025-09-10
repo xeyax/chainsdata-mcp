@@ -2269,7 +2269,7 @@
       }
     ]
   },
-  "abitrum": {
+  "arbitrum": {
     "baseUrl": "https://arbitrum-mainnet.infura.io/v3",
     "feeds": [
       {
