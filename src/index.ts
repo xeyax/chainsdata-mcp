@@ -61,6 +61,22 @@ interface SubgraphResponse {
   errors?: Array<{ message: string }>;
 }
 
+// Chainlink feed interfaces
+interface ChainlinkFeed {
+  name: string; // e.g., "BRL/USD", "ETH/USD"
+  proxyAddress: string;
+  feedCategory: string; // e.g., "low", "medium", "high"
+}
+
+interface ChainData {
+  baseUrl: string; // e.g., "https://mainnet.infura.io/v3"
+  feeds: ChainlinkFeed[];
+}
+
+interface FeedsData {
+  [chainName: string]: ChainData;
+}
+
 function readTokenList(listName: string, chainId: number): TokenList {
   const filename = `${listName}.${chainId}.json`;
   const filePath = path.join(process.cwd(), "token-lists", filename);
@@ -71,6 +87,19 @@ function readTokenList(listName: string, chainId: number): TokenList {
   } catch (error) {
     throw new Error(
       `Failed to read token list ${filename}: ${error instanceof Error ? error.message : "Unknown error"}`,
+    );
+  }
+}
+
+function readFeedsData(): FeedsData {
+  const filePath = path.join(process.cwd(), "feeds.json");
+
+  try {
+    const fileContent = fs.readFileSync(filePath, "utf8");
+    return JSON.parse(fileContent) as FeedsData;
+  } catch (error) {
+    throw new Error(
+      `Failed to read feeds.json: ${error instanceof Error ? error.message : "Unknown error"}`,
     );
   }
 }
@@ -330,6 +359,138 @@ async function findUniswapV3Pools(
   }
 }
 
+function getSupportedChains(): { supportedChains: string[] } {
+  const feedsData = readFeedsData();
+  return {
+    supportedChains: Object.keys(feedsData),
+  };
+}
+
+function getFeedAddresses(
+  pairs: string[],
+  chain?: string,
+): {
+  feeds: Array<{
+    name: string;
+    proxyAddress: string;
+    feedCategory: string;
+    chain: string;
+  }>;
+  notFound?: string;
+} {
+  if (!pairs || pairs.length === 0) {
+    throw new Error("Pairs array cannot be empty");
+  }
+
+  const feedsData = readFeedsData();
+  const foundFeeds: Array<{
+    name: string;
+    proxyAddress: string;
+    feedCategory: string;
+    chain: string;
+  }> = [];
+  const notFoundPairs: string[] = [];
+
+  if (chain) {
+    // Search in specific chain
+    if (!feedsData[chain]) {
+      throw new Error(
+        `Unsupported chain: ${chain}. Supported chains: ${Object.keys(feedsData).join(", ")}`,
+      );
+    }
+
+    const chainData = feedsData[chain];
+    for (const pair of pairs) {
+      if (typeof pair !== "string" || pair.trim() === "") {
+        notFoundPairs.push(String(pair));
+        continue;
+      }
+
+      const feed = chainData.feeds.find(
+        (f) => f.name.toLowerCase() === pair.toLowerCase(),
+      );
+      if (feed) {
+        foundFeeds.push({
+          ...feed,
+          chain,
+        });
+      } else {
+        notFoundPairs.push(pair);
+      }
+    }
+  } else {
+    // Search across all chains
+    for (const pair of pairs) {
+      if (typeof pair !== "string" || pair.trim() === "") {
+        notFoundPairs.push(String(pair));
+        continue;
+      }
+
+      let found = false;
+      for (const [chainName, chainData] of Object.entries(feedsData)) {
+        const feed = chainData.feeds.find(
+          (f) => f.name.toLowerCase() === pair.toLowerCase(),
+        );
+        if (feed) {
+          foundFeeds.push({
+            ...feed,
+            chain: chainName,
+          });
+          found = true;
+          break; // Only return first match per pair
+        }
+      }
+
+      if (!found) {
+        notFoundPairs.push(pair);
+      }
+    }
+  }
+
+  const result: {
+    feeds: Array<{
+      name: string;
+      proxyAddress: string;
+      feedCategory: string;
+      chain: string;
+    }>;
+    notFound?: string;
+  } = {
+    feeds: foundFeeds,
+  };
+
+  if (notFoundPairs.length > 0) {
+    result.notFound = notFoundPairs.join(", ");
+  }
+
+  return result;
+}
+
+function getSupportedFeedsByChain(chain: string): {
+  chain: string;
+  supportedFeeds: string[];
+} {
+  if (!chain || typeof chain !== "string" || chain.trim() === "") {
+    throw new Error("Chain parameter is required and cannot be empty");
+  }
+
+  const feedsData = readFeedsData();
+  
+  if (!feedsData[chain]) {
+    throw new Error(
+      `Unsupported chain: ${chain}. Supported chains: ${Object.keys(feedsData).join(", ")}`,
+    );
+  }
+
+  const chainData = feedsData[chain];
+  const supportedFeeds = chainData.feeds.map((feed) => feed.name);
+
+  return {
+    chain,
+    supportedFeeds,
+  };
+}
+
 function createServer(): McpServer {
   const server = new McpServer({
     name: "chainsdata-mcp",
@@ -448,6 +609,120 @@ function createServer(): McpServer {
                 null,
                 2,
               ),
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.registerTool(
+    "getSupportedChains",
+    {
+      title: "Get Supported Chains",
+      description: "Get list of supported chains for Chainlink feeds",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const result = getSupportedChains();
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error occurred";
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: errorMessage }, null, 2),
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.registerTool(
+    "getFeedAddresses",
+    {
+      title: "Get Feed Addresses",
+      description: "Get Chainlink feed addresses by token pairs",
+      inputSchema: {
+        pairs: z
+          .array(z.string())
+          .describe('Array of token pairs to search for (e.g., ["BRL/USD", "ETH/USD"])'),
+        chain: z
+          .string()
+          .optional()
+          .describe("Chain name (optional, searches all chains if not specified)"),
+      },
+    },
+    async ({ pairs, chain }) => {
+      try {
+        const result = getFeedAddresses(pairs, chain);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error occurred";
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: errorMessage }, null, 2),
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.registerTool(
+    "getSupportedFeedsByChain",
+    {
+      title: "Get Supported Feeds by Chain",
+      description: "Get list of all supported feed pairs for a specific chain",
+      inputSchema: {
+        chain: z
+          .string()
+          .describe("Chain name (required)"),
+      },
+    },
+    async ({ chain }) => {
+      try {
+        const result = getSupportedFeedsByChain(chain);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error occurred";
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: errorMessage }, null, 2),
             },
           ],
           isError: true,
@@ -618,7 +893,7 @@ async function main() {
           activeSessions,
           supportedChains: Object.keys(chainMapping),
           uniswapV3Chains: supportedUniswapChains,
-          tools: ["getTokensBySymbols", "getUniswapV3Pools"],
+          tools: ["getTokensBySymbols", "getUniswapV3Pools", "getSupportedChains", "getFeedAddresses", "getSupportedFeedsByChain"],
           version: "1.0.0",
           graphApiKeyConfigured: !!GRAPH_API_KEY,
         });
