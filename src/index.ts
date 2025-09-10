@@ -392,14 +392,15 @@ function getFeedAddresses(
   const notFoundPairs: string[] = [];
 
   if (chain) {
-    // Search in specific chain
-    if (!feedsData[chain]) {
+    // Search in specific chain (convert to lowercase for consistent lookup)
+    const normalizedChain = chain.toLowerCase();
+    if (!feedsData[normalizedChain]) {
       throw new Error(
         `Unsupported chain: ${chain}. Supported chains: ${Object.keys(feedsData).join(", ")}`,
       );
     }
 
-    const chainData = feedsData[chain];
+    const chainData = feedsData[normalizedChain];
     for (const pair of pairs) {
       if (typeof pair !== "string" || pair.trim() === "") {
         notFoundPairs.push(String(pair));
@@ -412,7 +413,7 @@ function getFeedAddresses(
       if (feed) {
         foundFeeds.push({
           ...feed,
-          chain,
+          chain: normalizedChain,
         });
       } else {
         notFoundPairs.push(pair);
@@ -476,17 +477,19 @@ function getSupportedFeedsByChain(chain: string): {
 
   const feedsData = readFeedsData();
   
-  if (!feedsData[chain]) {
+  // Convert chain to lowercase for consistent lookup
+  const normalizedChain = chain.toLowerCase();
+  if (!feedsData[normalizedChain]) {
     throw new Error(
       `Unsupported chain: ${chain}. Supported chains: ${Object.keys(feedsData).join(", ")}`,
     );
   }
 
-  const chainData = feedsData[chain];
+  const chainData = feedsData[normalizedChain];
   const supportedFeeds = chainData.feeds.map((feed) => feed.name);
 
   return {
-    chain,
+    chain: normalizedChain,
     supportedFeeds,
   };
 }
