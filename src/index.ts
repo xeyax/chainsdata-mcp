@@ -661,309 +661,355 @@ function createServer(): McpServer {
     version: "1.0.0",
   });
 
-  server.registerTool(
-    "getTokensBySymbols",
-    {
-      title: "Get Tokens by Symbols",
-      description: "Get token information by symbols from token lists",
-      inputSchema: {
-        symbols: z
-          .array(z.string())
-          .describe("Array of token symbols to search for"),
-        chain: z
-          .string()
-          .optional()
-          .describe("Chain name (optional, default: 'Ethereum')"),
-        list: z
-          .string()
-          .optional()
-          .describe("Token list name (optional, default: 'Coingecko')"),
+  console.log("Starting tool registration...");
+
+  try {
+    console.log("Registering getTokensBySymbols tool...");
+    server.registerTool(
+      "getTokensBySymbols",
+      {
+        title: "Get Tokens by Symbols",
+        description: "Get token information by symbols from token lists",
+        inputSchema: {
+          symbols: z
+            .array(z.string())
+            .describe("Array of token symbols to search for"),
+          chain: z
+            .string()
+            .optional()
+            .describe("Chain name (optional, default: 'Ethereum')"),
+          list: z
+            .string()
+            .optional()
+            .describe("Token list name (optional, default: 'Coingecko')"),
+        },
       },
-    },
-    async ({ symbols, chain, list }) => {
-      try {
-        const result = findTokensBySymbols(symbols, chain, list);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error occurred";
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: errorMessage }, null, 2),
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  server.registerTool(
-    "getUniswapV3Pools",
-    {
-      title: "Get Uniswap V3 Pools",
-      description:
-        "Find Uniswap V3 liquidity pools by token pairs using The Graph Protocol",
-      inputSchema: {
-        token0: z
-          .string()
-          .describe("First token symbol or name (e.g., 'WETH', 'tBTC')"),
-        token1: z
-          .string()
-          .describe("Second token symbol or name (e.g., 'USDC', 'DAI')"),
-        chain: z
-          .string()
-          .optional()
-          .default("Ethereum")
-          .describe(
-            `Chain name (optional, default: 'Ethereum'). Supported: ${supportedUniswapChains.join(", ")}`,
-          ),
+      async ({ symbols, chain, list }) => {
+        try {
+          const result = findTokensBySymbols(symbols, chain, list);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown error occurred";
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({ error: errorMessage }, null, 2),
+              },
+            ],
+            isError: true,
+          };
+        }
       },
-    },
-    async ({ token0, token1, chain }) => {
-      try {
-        const result = await findUniswapV3Pools(token0, token1, chain);
+    );
+    console.log("✓ getTokensBySymbols tool registered successfully");
+  } catch (error) {
+    console.error("✗ Failed to register getTokensBySymbols tool:", error);
+    throw error;
+  }
 
-        // Format the response with additional metadata
-        const formattedResult = {
-          ...result,
-          searchCriteria: {
-            token0,
-            token1,
-            chain,
-          },
-          timestamp: new Date().toISOString(),
-          apiInfo: {
-            source: "The Graph Protocol",
-            subgraph: "Uniswap V3",
-            endpoint: GRAPH_API_KEY ? "Authenticated Gateway" : "Public API",
-          },
-        };
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(formattedResult, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error occurred";
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  error: errorMessage,
-                  searchCriteria: { token0, token1, chain },
-                  timestamp: new Date().toISOString(),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  server.registerTool(
-    "getAerodromePools",
-    {
-      title: "Get Aerodrome Pools",
-      description:
-        "Find Aerodrome liquidity pools by token pairs on Base chain using The Graph Protocol",
-      inputSchema: {
-        token0: z
-          .string()
-          .describe("First token symbol or name (e.g., 'WETH', 'USDC')"),
-        token1: z
-          .string()
-          .describe("Second token symbol or name (e.g., 'DAI', 'AERO')"),
+  try {
+    console.log("Registering getUniswapV3Pools tool...");
+    server.registerTool(
+      "getUniswapV3Pools",
+      {
+        title: "Get Uniswap V3 Pools",
+        description:
+          "Find Uniswap V3 liquidity pools by token pairs using The Graph Protocol",
+        inputSchema: {
+          token0: z
+            .string()
+            .describe("First token symbol or name (e.g., 'WETH', 'tBTC')"),
+          token1: z
+            .string()
+            .describe("Second token symbol or name (e.g., 'USDC', 'DAI')"),
+          chain: z
+            .string()
+            .optional()
+            .default("Ethereum")
+            .describe(
+              `Chain name (optional, default: 'Ethereum'). Supported: ${supportedUniswapChains.join(", ")}`,
+            ),
+        },
       },
-    },
-    async ({ token0, token1 }) => {
-      try {
-        const result = await findAerodromePools(token0, token1);
+      async ({ token0, token1, chain }) => {
+        try {
+          const result = await findUniswapV3Pools(token0, token1, chain);
 
-        // Format the response with additional metadata
-        const formattedResult = {
-          ...result,
-          searchCriteria: {
-            token0,
-            token1,
-            chain: "Base",
-          },
-          timestamp: new Date().toISOString(),
-          apiInfo: {
-            source: "The Graph Protocol",
-            subgraph: "Aerodrome",
-            endpoint: GRAPH_API_KEY ? "Authenticated Gateway" : "Public API",
-          },
-        };
+          // Format the response with additional metadata
+          const formattedResult = {
+            ...result,
+            searchCriteria: {
+              token0,
+              token1,
+              chain,
+            },
+            timestamp: new Date().toISOString(),
+            apiInfo: {
+              source: "The Graph Protocol",
+              subgraph: "Uniswap V3",
+              endpoint: GRAPH_API_KEY ? "Authenticated Gateway" : "Public API",
+            },
+          };
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(formattedResult, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error occurred";
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  error: errorMessage,
-                  searchCriteria: { token0, token1, chain: "Base" },
-                  timestamp: new Date().toISOString(),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  server.registerTool(
-    "getSupportedChains",
-    {
-      title: "Get Supported Chains",
-      description: "Get list of supported chains for Chainlink feeds",
-      inputSchema: {},
-    },
-    async () => {
-      try {
-        const result = getSupportedChains();
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error occurred";
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: errorMessage }, null, 2),
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
-
-  server.registerTool(
-    "getFeedAddresses",
-    {
-      title: "Get Feed Addresses",
-      description: "Get Chainlink feed addresses by token pairs",
-      inputSchema: {
-        pairs: z
-          .array(z.string())
-          .describe(
-            'Array of token pairs to search for (e.g., ["BRL/USD", "ETH/USD"])',
-          ),
-        chain: z
-          .string()
-          .optional()
-          .describe(
-            "Chain name (optional, searches all chains if not specified)",
-          ),
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(formattedResult, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown error occurred";
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    error: errorMessage,
+                    searchCriteria: { token0, token1, chain },
+                    timestamp: new Date().toISOString(),
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+            isError: true,
+          };
+        }
       },
-    },
-    async ({ pairs, chain }) => {
-      try {
-        const result = getFeedAddresses(pairs, chain);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error occurred";
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: errorMessage }, null, 2),
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
+    );
+    console.log("✓ getUniswapV3Pools tool registered successfully");
+  } catch (error) {
+    console.error("✗ Failed to register getUniswapV3Pools tool:", error);
+    throw error;
+  }
 
-  server.registerTool(
-    "getSupportedFeedsByChain",
-    {
-      title: "Get Supported Feeds by Chain",
-      description: "Get list of all supported feed pairs for a specific chain",
-      inputSchema: {
-        chain: z.string().describe("Chain name (required)"),
+  try {
+    console.log("Registering getAerodromePools tool...");
+    server.registerTool(
+      "getAerodromePools",
+      {
+        title: "Get Aerodrome Pools",
+        description:
+          "Find Aerodrome liquidity pools by token pairs on Base chain using The Graph Protocol",
+        inputSchema: {
+          token0: z
+            .string()
+            .describe("First token symbol or name (e.g., 'WETH', 'USDC')"),
+          token1: z
+            .string()
+            .describe("Second token symbol or name (e.g., 'DAI', 'AERO')"),
+        },
       },
-    },
-    async ({ chain }) => {
-      try {
-        const result = getSupportedFeedsByChain(chain);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error occurred";
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ error: errorMessage }, null, 2),
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
+      async ({ token0, token1 }) => {
+        try {
+          const result = await findAerodromePools(token0, token1);
 
+          // Format the response with additional metadata
+          const formattedResult = {
+            ...result,
+            searchCriteria: {
+              token0,
+              token1,
+              chain: "Base",
+            },
+            timestamp: new Date().toISOString(),
+            apiInfo: {
+              source: "The Graph Protocol",
+              subgraph: "Aerodrome",
+              endpoint: GRAPH_API_KEY ? "Authenticated Gateway" : "Public API",
+            },
+          };
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(formattedResult, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown error occurred";
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    error: errorMessage,
+                    searchCriteria: { token0, token1, chain: "Base" },
+                    timestamp: new Date().toISOString(),
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+            isError: true,
+          };
+        }
+      },
+    );
+    console.log("✓ getAerodromePools tool registered successfully");
+  } catch (error) {
+    console.error("✗ Failed to register getAerodromePools tool:", error);
+    throw error;
+  }
+
+  try {
+    console.log("Registering getSupportedChains tool...");
+    server.registerTool(
+      "getSupportedChains",
+      {
+        title: "Get Supported Chains",
+        description: "Get list of supported chains for Chainlink feeds",
+        inputSchema: {},
+      },
+      async () => {
+        try {
+          const result = getSupportedChains();
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown error occurred";
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({ error: errorMessage }, null, 2),
+              },
+            ],
+            isError: true,
+          };
+        }
+      },
+    );
+    console.log("✓ getSupportedChains tool registered successfully");
+  } catch (error) {
+    console.error("✗ Failed to register getSupportedChains tool:", error);
+    throw error;
+  }
+
+  try {
+    console.log("Registering getFeedAddresses tool...");
+    server.registerTool(
+      "getFeedAddresses",
+      {
+        title: "Get Feed Addresses",
+        description: "Get Chainlink feed addresses by token pairs",
+        inputSchema: {
+          pairs: z
+            .array(z.string())
+            .describe(
+              'Array of token pairs to search for (e.g., ["BRL/USD", "ETH/USD"])',
+            ),
+          chain: z
+            .string()
+            .optional()
+            .describe(
+              "Chain name (optional, searches all chains if not specified)",
+            ),
+        },
+      },
+      async ({ pairs, chain }) => {
+        try {
+          const result = getFeedAddresses(pairs, chain);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown error occurred";
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({ error: errorMessage }, null, 2),
+              },
+            ],
+            isError: true,
+          };
+        }
+      },
+    );
+    console.log("✓ getFeedAddresses tool registered successfully");
+  } catch (error) {
+    console.error("✗ Failed to register getFeedAddresses tool:", error);
+    throw error;
+  }
+
+  try {
+    console.log("Registering getSupportedFeedsByChain tool...");
+    server.registerTool(
+      "getSupportedFeedsByChain",
+      {
+        title: "Get Supported Feeds by Chain",
+        description:
+          "Get list of all supported feed pairs for a specific chain",
+        inputSchema: {
+          chain: z.string().describe("Chain name (required)"),
+        },
+      },
+      async ({ chain }) => {
+        try {
+          const result = getSupportedFeedsByChain(chain);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown error occurred";
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({ error: errorMessage }, null, 2),
+              },
+            ],
+            isError: true,
+          };
+        }
+      },
+    );
+    console.log("✓ getSupportedFeedsByChain tool registered successfully");
+  } catch (error) {
+    console.error("✗ Failed to register getSupportedFeedsByChain tool:", error);
+    throw error;
+  }
+
+  console.log("All tools registered successfully!");
   return server;
 }
 
@@ -1120,20 +1166,27 @@ async function main() {
       // Health check endpoint
       app.get("/health", (req, res) => {
         const activeSessions = Object.keys(transports).length;
+
+        // For now, keep the hardcoded list but add logging to detect issues
+        // We'll see the actual registration status in the server logs
+        const expectedTools = [
+          "getTokensBySymbols",
+          "getUniswapV3Pools",
+          "getAerodromePools",
+          "getSupportedChains",
+          "getFeedAddresses",
+          "getSupportedFeedsByChain",
+        ];
+
+        let registeredTools = expectedTools;
+
         res.json({
           status: "healthy",
           timestamp: new Date().toISOString(),
           activeSessions,
           supportedChains: Object.keys(chainMapping),
           uniswapV3Chains: supportedUniswapChains,
-          tools: [
-            "getTokensBySymbols",
-            "getUniswapV3Pools",
-            "getAerodromePools",
-            "getSupportedChains",
-            "getFeedAddresses",
-            "getSupportedFeedsByChain",
-          ],
+          tools: registeredTools,
           version: "1.0.0",
           graphApiKeyConfigured: !!GRAPH_API_KEY,
         });
