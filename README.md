@@ -10,7 +10,7 @@ A Model Context Protocol (MCP) server that provides token data from locally stor
 - **Case-Insensitive**: Token symbol matching is case-insensitive
 
 <details>
-<summary><b>Install in Cursor</b></summary> 
+<summary><b>Install in Cursor</b></summary>
 
 Go to: `Settings` -> `Cursor Settings` -> `MCP` -> `Add new global MCP server`
 
@@ -26,7 +26,7 @@ Pasting the following configuration into your Cursor `~/.cursor/mcp.json` file i
 {
   "mcpServers": {
     "chainsdata-mcp": {
-      "url": "https://chainsdata-mcp.vercel.app/mcp",
+      "url": "https://chainsdata-mcp.vercel.app/mcp"
     }
   }
 }
@@ -57,17 +57,21 @@ npm run build
 ## Usage
 
 ### Stdio Mode (Default)
+
 ```bash
 npm start
 ```
 
 ### HTTP Mode
+
 ```bash
 npm start -- --http
 ```
+
 Server will run on port 3000 (or the PORT environment variable).
 
 ### Development
+
 ```bash
 npm run dev
 ```
@@ -113,11 +117,13 @@ After configuration, restart Claude Code to load the MCP server.
 Get token information by providing an array of token symbols.
 
 **Parameters:**
+
 - `symbols` (required): Array of token symbols to search for
 - `chain` (optional): Chain name - "Ethereum" or "Arbitrum" (default: "Ethereum")
 - `list` (optional): Token list name (default: "Coingecko")
 
 **Example:**
+
 ```json
 {
   "symbols": ["USDC", "USDT", "DAI"],
@@ -127,6 +133,7 @@ Get token information by providing an array of token symbols.
 ```
 
 **Response:**
+
 ```json
 {
   "tokens": [
@@ -146,6 +153,7 @@ Get token information by providing an array of token symbols.
 ## Token Lists
 
 Token data is stored in the `token-lists/` directory:
+
 - `Coingecko.1.json` - Ethereum tokens
 - `Coingecko.42161.json` - Arbitrum tokens
 
