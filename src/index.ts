@@ -2,16 +2,15 @@ import { config } from "dotenv";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import fs from "fs";
 import path from "path";
 import express from "express";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 
-// Load environment variables from .env file
 config();
 
-// Environment variables validation
 const GRAPH_API_KEY = process.env.GRAPH_API_KEY;
 if (!GRAPH_API_KEY) {
   console.warn(
@@ -19,7 +18,6 @@ if (!GRAPH_API_KEY) {
   );
 }
 
-//token interface
 interface Token {
   chainId: number;
   address: string;
@@ -34,22 +32,21 @@ interface TokenList {
   tokens: Token[];
 }
 
-// Uniswap V3 Pool interfaces
 interface UniswapV3Token {
-  id: string; // Token address
-  symbol: string; // Token symbol (e.g., "WETH")
-  name: string; // Token name (e.g., "Wrapped Ether")
-  decimals: string; // Token decimals as string (from subgraph)
+  id: string;
+  symbol: string;
+  name: string;
+  decimals: string;
 }
 
 interface UniswapV3Pool {
-  id: string; // Pool address
-  feeTier: string; // Fee tier (500, 3000, 10000)
-  token0: UniswapV3Token; // First token in pair
-  token1: UniswapV3Token; // Second token in pair
-  totalValueLockedUSD: string; // TVL in USD
-  volumeUSD: string; // 24h volume in USD
-  txCount: string; // Total transaction count
+  id: string;
+  feeTier: string;
+  token0: UniswapV3Token;
+  token1: UniswapV3Token;
+  totalValueLockedUSD: string;
+  volumeUSD: string;
+  txCount: string;
 }
 
 interface UniswapV3PoolsResponse {
@@ -61,21 +58,20 @@ interface SubgraphResponse {
   errors?: Array<{ message: string }>;
 }
 
-// Aerodrome Pool interfaces
 interface AerodromeToken {
-  id: string; // Token address
-  symbol: string; // Token symbol (e.g., "WETH")
-  name: string; // Token name (e.g., "Wrapped Ether")
-  decimals: string; // Token decimals as string (from subgraph)
+  id: string;
+  symbol: string;
+  name: string;
+  decimals: string;
 }
 
 interface AerodromePool {
-  id: string; // Pool address
-  totalValueLockedUSD: string; // TVL in USD
-  volumeUSD: string; // 24h volume in USD
-  txCount: string; // Total transaction count
-  token0: AerodromeToken; // First token in pair
-  token1: AerodromeToken; // Second token in pair
+  id: string;
+  totalValueLockedUSD: string;
+  volumeUSD: string;
+  txCount: string;
+  token0: AerodromeToken;
+  token1: AerodromeToken;
 }
 
 interface AerodromePoolsResponse {
@@ -87,15 +83,14 @@ interface AerodromeSubgraphResponse {
   errors?: Array<{ message: string }>;
 }
 
-// Chainlink feed interfaces
 interface ChainlinkFeed {
-  name: string; // e.g., "BRL/USD", "ETH/USD"
+  name: string;
   proxyAddress: string;
-  feedCategory: string; // e.g., "low", "medium", "high"
+  feedCategory: string;
 }
 
 interface ChainData {
-  baseUrl: string; // e.g., "https://mainnet.infura.io/v3"
+  baseUrl: string;
   feeds: ChainlinkFeed[];
 }
 
@@ -139,7 +134,6 @@ const chainMapping: Record<string, number> = {
   Base: 8453,
 };
 
-// The Graph subgraph IDs for Uniswap V3 on different chains
 const uniswapV3SubgraphMapping: Record<string, string> = {
   Ethereum: "5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV",
   Polygon: "3hCPRGf4z88VC5rsBKU5AA9FBBq5nF3jbKJG7VZCbhjm",
@@ -147,15 +141,12 @@ const uniswapV3SubgraphMapping: Record<string, string> = {
   Arbitrum: "3V7ZY6muhxaQL5qvntX1CFXJ32W7BxXZTGTwmpH5J4t3",
 };
 
-// Supported chains for Uniswap V3 (subset of main chainMapping)
 const supportedUniswapChains = Object.keys(uniswapV3SubgraphMapping);
 
-// The Graph subgraph ID for Aerodrome on Base
 const aerodromeSubgraphMapping: Record<string, string> = {
-  Base: "GENunSHWLBXm59mBSgPzQ8metBEp9YDfdqwFr91Av1UM", // Aerodrome subgraph on Base
+  Base: "GENunSHWLBXm59mBSgPzQ8metBEp9YDfdqwFr91Av1UM",
 };
 
-// Supported chains for Aerodrome (Base only)
 const supportedAerodromeChains = Object.keys(aerodromeSubgraphMapping);
 
 function findTokensBySymbols(
@@ -206,7 +197,6 @@ function findTokensBySymbols(
   return result;
 }
 
-// GraphQL query for Uniswap V3 pools
 const UNISWAP_V3_POOLS_QUERY = `
   query GetPools($token0Symbol: String, $token1Symbol: String, $token0Name: String, $token1Name: String) {
     pools(
@@ -271,7 +261,6 @@ const UNISWAP_V3_POOLS_QUERY = `
   }
 `;
 
-// GraphQL query for Aerodrome pools
 const AERODROME_POOLS_QUERY = `
   query GetAerodromePools($token0Symbol: String, $token1Symbol: String, $token0Name: String, $token1Name: String) {
     pools(
@@ -378,7 +367,6 @@ async function querySubgraph(
         );
       }
 
-      // Exponential backoff: wait 1s, 2s, 4s between retries
       await new Promise((resolve) =>
         setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)),
       );
@@ -396,7 +384,6 @@ async function findUniswapV3Pools(
   pools: UniswapV3Pool[];
   metadata: { chain: string; totalResults: number };
 }> {
-  // Input validation
   if (!token0 || !token1) {
     throw new Error("Both token0 and token1 parameters are required");
   }
@@ -405,7 +392,6 @@ async function findUniswapV3Pools(
     throw new Error("Token parameters must be strings");
   }
 
-  // Normalize inputs
   const normalizedToken0 = token0.trim();
   const normalizedToken1 = token1.trim();
 
@@ -413,7 +399,6 @@ async function findUniswapV3Pools(
     throw new Error("Token parameters cannot be empty");
   }
 
-  // Check if chain is supported for Uniswap V3
   if (!supportedUniswapChains.includes(chain)) {
     throw new Error(
       `Uniswap V3 not supported on ${chain}. Supported chains: ${supportedUniswapChains.join(", ")}`,
@@ -423,7 +408,6 @@ async function findUniswapV3Pools(
   const subgraphId = uniswapV3SubgraphMapping[chain];
 
   try {
-    // Query the subgraph
     const response = await querySubgraph(
       UNISWAP_V3_POOLS_QUERY,
       {
@@ -437,10 +421,9 @@ async function findUniswapV3Pools(
 
     const pools = response.data.pools || [];
 
-    // Filter pools to ensure we have meaningful TVL (> $1000)
     const filteredPools = pools.filter((pool: any) => {
       const tvl = parseFloat(pool.totalValueLockedUSD);
-      return tvl > 1000; // Only return pools with > $1000 TVL
+      return tvl > 1000;
     });
 
     return {
@@ -464,7 +447,6 @@ async function findAerodromePools(
   pools: AerodromePool[];
   metadata: { chain: string; totalResults: number };
 }> {
-  // Input validation
   if (!token0 || !token1) {
     throw new Error("Both token0 and token1 parameters are required");
   }
@@ -473,7 +455,6 @@ async function findAerodromePools(
     throw new Error("Token parameters must be strings");
   }
 
-  // Normalize inputs
   const normalizedToken0 = token0.trim();
   const normalizedToken1 = token1.trim();
 
@@ -481,12 +462,10 @@ async function findAerodromePools(
     throw new Error("Token parameters cannot be empty");
   }
 
-  // Aerodrome is only available on Base
   const chain = "Base";
   const subgraphId = aerodromeSubgraphMapping[chain];
 
   try {
-    // Query the subgraph
     const response = await querySubgraph(
       AERODROME_POOLS_QUERY,
       {
@@ -500,10 +479,9 @@ async function findAerodromePools(
 
     const pools = response.data.pools || [];
 
-    // Filter pools to ensure we have meaningful TVL (> $1000)
     const filteredPools = pools.filter((pool: AerodromePool) => {
       const tvl = parseFloat(pool.totalValueLockedUSD);
-      return tvl > 1000; // Only return pools with > $1000 TVL
+      return tvl > 1000;
     });
 
     return {
@@ -553,7 +531,6 @@ function getFeedAddresses(
   const notFoundPairs: string[] = [];
 
   if (chain) {
-    // Search in specific chain (convert to lowercase for consistent lookup)
     const normalizedChain = chain.toLowerCase();
     if (!feedsData[normalizedChain]) {
       throw new Error(
@@ -581,7 +558,6 @@ function getFeedAddresses(
       }
     }
   } else {
-    // Search across all chains
     for (const pair of pairs) {
       if (typeof pair !== "string" || pair.trim() === "") {
         notFoundPairs.push(String(pair));
@@ -599,7 +575,7 @@ function getFeedAddresses(
             chain: chainName,
           });
           found = true;
-          break; // Only return first match per pair
+          break;
         }
       }
 
@@ -638,7 +614,6 @@ function getSupportedFeedsByChain(chain: string): {
 
   const feedsData = readFeedsData();
 
-  // Convert chain to lowercase for consistent lookup
   const normalizedChain = chain.toLowerCase();
   if (!feedsData[normalizedChain]) {
     throw new Error(
@@ -710,7 +685,7 @@ function createServer(): McpServer {
         }
       },
     );
-    console.log("✓ getTokensBySymbols tool registered successfully");
+    console.log("✔ getTokensBySymbols tool registered successfully");
   } catch (error) {
     console.error("✗ Failed to register getTokensBySymbols tool:", error);
     throw error;
@@ -744,7 +719,6 @@ function createServer(): McpServer {
         try {
           const result = await findUniswapV3Pools(token0, token1, chain);
 
-          // Format the response with additional metadata
           const formattedResult = {
             ...result,
             searchCriteria: {
@@ -791,7 +765,7 @@ function createServer(): McpServer {
         }
       },
     );
-    console.log("✓ getUniswapV3Pools tool registered successfully");
+    console.log("✔ getUniswapV3Pools tool registered successfully");
   } catch (error) {
     console.error("✗ Failed to register getUniswapV3Pools tool:", error);
     throw error;
@@ -818,7 +792,6 @@ function createServer(): McpServer {
         try {
           const result = await findAerodromePools(token0, token1);
 
-          // Format the response with additional metadata
           const formattedResult = {
             ...result,
             searchCriteria: {
@@ -865,7 +838,7 @@ function createServer(): McpServer {
         }
       },
     );
-    console.log("✓ getAerodromePools tool registered successfully");
+    console.log("✔ getAerodromePools tool registered successfully");
   } catch (error) {
     console.error("✗ Failed to register getAerodromePools tool:", error);
     throw error;
@@ -906,7 +879,7 @@ function createServer(): McpServer {
         }
       },
     );
-    console.log("✓ getSupportedChains tool registered successfully");
+    console.log("✔ getSupportedChains tool registered successfully");
   } catch (error) {
     console.error("✗ Failed to register getSupportedChains tool:", error);
     throw error;
@@ -959,7 +932,7 @@ function createServer(): McpServer {
         }
       },
     );
-    console.log("✓ getFeedAddresses tool registered successfully");
+    console.log("✔ getFeedAddresses tool registered successfully");
   } catch (error) {
     console.error("✗ Failed to register getFeedAddresses tool:", error);
     throw error;
@@ -1003,7 +976,7 @@ function createServer(): McpServer {
         }
       },
     );
-    console.log("✓ getSupportedFeedsByChain tool registered successfully");
+    console.log("✔ getSupportedFeedsByChain tool registered successfully");
   } catch (error) {
     console.error("✗ Failed to register getSupportedFeedsByChain tool:", error);
     throw error;
@@ -1024,7 +997,6 @@ async function main() {
 
       app.use(express.json());
 
-      // CORS headers for remote access
       app.use((req, res, next) => {
         res.header("Access-Control-Allow-Origin", "*");
         res.header(
@@ -1044,16 +1016,20 @@ async function main() {
         next();
       });
 
-      // Session management with cleanup
       const transports: { [sessionId: string]: StreamableHTTPServerTransport } =
         {};
+      const servers: { [sessionId: string]: McpServer } = {};
       const sessionTimers: { [sessionId: string]: NodeJS.Timeout } = {};
-      const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+      const SESSION_TIMEOUT = 30 * 60 * 1000;
 
       const cleanupSession = (sessionId: string) => {
         if (transports[sessionId]) {
           transports[sessionId].close?.();
           delete transports[sessionId];
+        }
+        if (servers[sessionId]) {
+          servers[sessionId].close?.();
+          delete servers[sessionId];
         }
         if (sessionTimers[sessionId]) {
           clearTimeout(sessionTimers[sessionId]);
@@ -1071,31 +1047,28 @@ async function main() {
         }, SESSION_TIMEOUT);
       };
 
-      // Create a shared server instance that will be reused across sessions
-      const sharedServer = createServer();
-
-      // Handle POST requests for client-to-server communication
       app.post("/mcp", async (req, res) => {
         try {
           const sessionId = req.headers["mcp-session-id"] as string | undefined;
           let transport: StreamableHTTPServerTransport;
+          let server: McpServer;
 
           if (sessionId && transports[sessionId]) {
-            // Reuse existing transport and reset its timer
             transport = transports[sessionId];
             resetSessionTimer(sessionId);
-          } else if (!sessionId || !transports[sessionId]) {
-            // New initialization request
+          } else if (!sessionId && isInitializeRequest(req.body)) {
+            server = createServer();
+
             transport = new StreamableHTTPServerTransport({
               sessionIdGenerator: () => randomUUID(),
               onsessioninitialized: (sessionId) => {
                 transports[sessionId] = transport;
+                servers[sessionId] = server;
                 resetSessionTimer(sessionId);
                 console.error(`New MCP session initialized: ${sessionId}`);
               },
             });
 
-            // Clean up transport when closed
             transport.onclose = () => {
               if (transport.sessionId) {
                 console.error(`MCP session closed: ${transport.sessionId}`);
@@ -1103,8 +1076,7 @@ async function main() {
               }
             };
 
-            // Connect the shared server to the new transport
-            await sharedServer.connect(transport);
+            await server.connect(transport);
           } else {
             res.status(400).json({
               jsonrpc: "2.0",
@@ -1133,7 +1105,6 @@ async function main() {
         }
       });
 
-      // Reusable handler for GET and DELETE requests
       const handleSessionRequest = async (
         req: express.Request,
         res: express.Response,
@@ -1160,18 +1131,13 @@ async function main() {
         }
       };
 
-      // Handle GET requests for server-to-client notifications via SSE
       app.get("/mcp", handleSessionRequest);
 
-      // Handle DELETE requests for session termination
       app.delete("/mcp", handleSessionRequest);
 
-      // Health check endpoint
       app.get("/health", (req, res) => {
         const activeSessions = Object.keys(transports).length;
 
-        // For now, keep the hardcoded list but add logging to detect issues
-        // We'll see the actual registration status in the server logs
         const expectedTools = [
           "getTokensBySymbols",
           "getUniswapV3Pools",
@@ -1195,7 +1161,6 @@ async function main() {
         });
       });
 
-      // Default route for API information
       app.get("/", (req, res) => {
         res.json({
           name: "ChainsData MCP Server",
@@ -1210,7 +1175,6 @@ async function main() {
         });
       });
 
-      // Global error handler
       app.use(
         (
           error: Error,
@@ -1232,11 +1196,9 @@ async function main() {
         console.error(`MCP endpoint: http://localhost:${port}/mcp`);
       });
 
-      // Graceful shutdown
       const shutdown = () => {
         console.error("Received shutdown signal, cleaning up...");
 
-        // Clean up all sessions
         Object.keys(transports).forEach((sessionId) => {
           cleanupSession(sessionId);
         });
@@ -1250,7 +1212,6 @@ async function main() {
       process.on("SIGINT", shutdown);
       process.on("SIGTERM", shutdown);
     } else {
-      // Stdio mode
       const server = createServer();
       const transport = new StdioServerTransport();
 
