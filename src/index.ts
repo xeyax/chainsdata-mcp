@@ -1071,6 +1071,9 @@ async function main() {
         }, SESSION_TIMEOUT);
       };
 
+      // Create a shared server instance that will be reused across sessions
+      const sharedServer = createServer();
+
       // Handle POST requests for client-to-server communication
       app.post("/mcp", async (req, res) => {
         try {
@@ -1100,8 +1103,8 @@ async function main() {
               }
             };
 
-            const server = createServer();
-            await server.connect(transport);
+            // Connect the shared server to the new transport
+            await sharedServer.connect(transport);
           } else {
             res.status(400).json({
               jsonrpc: "2.0",
