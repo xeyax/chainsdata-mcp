@@ -61,6 +61,32 @@ interface SubgraphResponse {
   errors?: Array<{ message: string }>;
 }
 
+// Aerodrome Pool interfaces
+interface AerodromeToken {
+  id: string; // Token address
+  symbol: string; // Token symbol (e.g., "WETH")
+  name: string; // Token name (e.g., "Wrapped Ether")
+  decimals: string; // Token decimals as string (from subgraph)
+}
+
+interface AerodromePool {
+  id: string; // Pool address
+  totalValueLockedUSD: string; // TVL in USD
+  volumeUSD: string; // 24h volume in USD
+  txCount: string; // Total transaction count
+  token0: AerodromeToken; // First token in pair
+  token1: AerodromeToken; // Second token in pair
+}
+
+interface AerodromePoolsResponse {
+  pools: AerodromePool[];
+}
+
+interface AerodromeSubgraphResponse {
+  data: AerodromePoolsResponse;
+  errors?: Array<{ message: string }>;
+}
+
 // Chainlink feed interfaces
 interface ChainlinkFeed {
   name: string; // e.g., "BRL/USD", "ETH/USD"
@@ -123,6 +149,14 @@ const uniswapV3SubgraphMapping: Record<string, string> = {
 
 // Supported chains for Uniswap V3 (subset of main chainMapping)
 const supportedUniswapChains = Object.keys(uniswapV3SubgraphMapping);
+
+// The Graph subgraph ID for Aerodrome on Base
+const aerodromeSubgraphMapping: Record<string, string> = {
+  Base: "4Jqfnh2HK48KRvZ7aYmhPT6pKYKNRDp6cLjwDz6gWHaT", // Aerodrome subgraph on Base
+};
+
+// Supported chains for Aerodrome (Base only)
+const supportedAerodromeChains = Object.keys(aerodromeSubgraphMapping);
 
 function findTokensBySymbols(
   symbols: string[],
@@ -237,12 +271,76 @@ const UNISWAP_V3_POOLS_QUERY = `
   }
 `;
 
-async function queryUniswapV3Subgraph(
+// GraphQL query for Aerodrome pools
+const AERODROME_POOLS_QUERY = `
+  query GetAerodromePools($token0Symbol: String, $token1Symbol: String, $token0Name: String, $token1Name: String) {
+    pools(
+      first: 50,
+      orderBy: totalValueLockedUSD,
+      orderDirection: desc,
+      where: {
+        or: [
+          {
+            and: [
+              {
+                or: [
+                  { token0_: { symbol_contains_nocase: $token0Symbol } },
+                  { token0_: { name_contains_nocase: $token0Name } }
+                ]
+              },
+              {
+                or: [
+                  { token1_: { symbol_contains_nocase: $token1Symbol } },
+                  { token1_: { name_contains_nocase: $token1Name } }
+                ]
+              }
+            ]
+          },
+          {
+            and: [
+              {
+                or: [
+                  { token0_: { symbol_contains_nocase: $token1Symbol } },
+                  { token0_: { name_contains_nocase: $token1Name } }
+                ]
+              },
+              {
+                or: [
+                  { token1_: { symbol_contains_nocase: $token0Symbol } },
+                  { token1_: { name_contains_nocase: $token0Name } }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ) {
+      id
+      totalValueLockedUSD
+      volumeUSD
+      txCount
+      token0 {
+        id
+        symbol
+        name
+        decimals
+      }
+      token1 {
+        id
+        symbol
+        name
+        decimals
+      }
+    }
+  }
+`;
+
+async function querySubgraph(
   query: string,
   variables: Record<string, any>,
   chainSubgraphId: string,
   retries = 3,
-): Promise<SubgraphResponse> {
+): Promise<any> {
   const baseUrl = GRAPH_API_KEY
     ? `https://gateway.thegraph.com/api/${GRAPH_API_KEY}/subgraphs/id/${chainSubgraphId}`
     : `https://api.thegraph.com/subgraphs/id/${chainSubgraphId}`;
@@ -262,11 +360,11 @@ async function queryUniswapV3Subgraph(
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const data: SubgraphResponse = await response.json();
+      const data: any = await response.json();
 
       if (data.errors && data.errors.length > 0) {
         throw new Error(
-          `GraphQL errors: ${data.errors.map((e) => e.message).join(", ")}`,
+          `GraphQL errors: ${data.errors.map((e: any) => e.message).join(", ")}`,
         );
       }
 
@@ -287,7 +385,7 @@ async function queryUniswapV3Subgraph(
     }
   }
 
-  throw new Error("Unexpected error in queryUniswapV3Subgraph");
+  throw new Error("Unexpected error in querySubgraph");
 }
 
 async function findUniswapV3Pools(
@@ -326,7 +424,7 @@ async function findUniswapV3Pools(
 
   try {
     // Query the subgraph
-    const response = await queryUniswapV3Subgraph(
+    const response = await querySubgraph(
       UNISWAP_V3_POOLS_QUERY,
       {
         token0Symbol: normalizedToken0,
@@ -340,7 +438,7 @@ async function findUniswapV3Pools(
     const pools = response.data.pools || [];
 
     // Filter pools to ensure we have meaningful TVL (> $1000)
-    const filteredPools = pools.filter((pool) => {
+    const filteredPools = pools.filter((pool: any) => {
       const tvl = parseFloat(pool.totalValueLockedUSD);
       return tvl > 1000; // Only return pools with > $1000 TVL
     });
@@ -355,6 +453,69 @@ async function findUniswapV3Pools(
   } catch (error) {
     throw new Error(
       `Failed to fetch Uniswap V3 pools: ${error instanceof Error ? error.message : "Unknown error"}`,
+    );
+  }
+}
+
+async function findAerodromePools(
+  token0: string,
+  token1: string,
+): Promise<{
+  pools: AerodromePool[];
+  metadata: { chain: string; totalResults: number };
+}> {
+  // Input validation
+  if (!token0 || !token1) {
+    throw new Error("Both token0 and token1 parameters are required");
+  }
+
+  if (typeof token0 !== "string" || typeof token1 !== "string") {
+    throw new Error("Token parameters must be strings");
+  }
+
+  // Normalize inputs
+  const normalizedToken0 = token0.trim();
+  const normalizedToken1 = token1.trim();
+
+  if (normalizedToken0 === "" || normalizedToken1 === "") {
+    throw new Error("Token parameters cannot be empty");
+  }
+
+  // Aerodrome is only available on Base
+  const chain = "Base";
+  const subgraphId = aerodromeSubgraphMapping[chain];
+
+  try {
+    // Query the subgraph
+    const response = await querySubgraph(
+      AERODROME_POOLS_QUERY,
+      {
+        token0Symbol: normalizedToken0,
+        token1Symbol: normalizedToken1,
+        token0Name: normalizedToken0,
+        token1Name: normalizedToken1,
+      },
+      subgraphId,
+    );
+
+    const pools = response.data.pools || [];
+
+    // Filter pools to ensure we have meaningful TVL (> $1000)
+    const filteredPools = pools.filter((pool: AerodromePool) => {
+      const tvl = parseFloat(pool.totalValueLockedUSD);
+      return tvl > 1000; // Only return pools with > $1000 TVL
+    });
+
+    return {
+      pools: filteredPools,
+      metadata: {
+        chain,
+        totalResults: filteredPools.length,
+      },
+    };
+  } catch (error) {
+    throw new Error(
+      `Failed to fetch Aerodrome pools: ${error instanceof Error ? error.message : "Unknown error"}`,
     );
   }
 }
@@ -476,7 +637,7 @@ function getSupportedFeedsByChain(chain: string): {
   }
 
   const feedsData = readFeedsData();
-  
+
   // Convert chain to lowercase for consistent lookup
   const normalizedChain = chain.toLowerCase();
   if (!feedsData[normalizedChain]) {
@@ -621,6 +782,73 @@ function createServer(): McpServer {
   );
 
   server.registerTool(
+    "getAerodromePools",
+    {
+      title: "Get Aerodrome Pools",
+      description:
+        "Find Aerodrome liquidity pools by token pairs on Base chain using The Graph Protocol",
+      inputSchema: {
+        token0: z
+          .string()
+          .describe("First token symbol or name (e.g., 'WETH', 'USDC')"),
+        token1: z
+          .string()
+          .describe("Second token symbol or name (e.g., 'DAI', 'AERO')"),
+      },
+    },
+    async ({ token0, token1 }) => {
+      try {
+        const result = await findAerodromePools(token0, token1);
+
+        // Format the response with additional metadata
+        const formattedResult = {
+          ...result,
+          searchCriteria: {
+            token0,
+            token1,
+            chain: "Base",
+          },
+          timestamp: new Date().toISOString(),
+          apiInfo: {
+            source: "The Graph Protocol",
+            subgraph: "Aerodrome",
+            endpoint: GRAPH_API_KEY ? "Authenticated Gateway" : "Public API",
+          },
+        };
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(formattedResult, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error occurred";
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  error: errorMessage,
+                  searchCriteria: { token0, token1, chain: "Base" },
+                  timestamp: new Date().toISOString(),
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.registerTool(
     "getSupportedChains",
     {
       title: "Get Supported Chains",
@@ -662,11 +890,15 @@ function createServer(): McpServer {
       inputSchema: {
         pairs: z
           .array(z.string())
-          .describe('Array of token pairs to search for (e.g., ["BRL/USD", "ETH/USD"])'),
+          .describe(
+            'Array of token pairs to search for (e.g., ["BRL/USD", "ETH/USD"])',
+          ),
         chain: z
           .string()
           .optional()
-          .describe("Chain name (optional, searches all chains if not specified)"),
+          .describe(
+            "Chain name (optional, searches all chains if not specified)",
+          ),
       },
     },
     async ({ pairs, chain }) => {
@@ -702,9 +934,7 @@ function createServer(): McpServer {
       title: "Get Supported Feeds by Chain",
       description: "Get list of all supported feed pairs for a specific chain",
       inputSchema: {
-        chain: z
-          .string()
-          .describe("Chain name (required)"),
+        chain: z.string().describe("Chain name (required)"),
       },
     },
     async ({ chain }) => {
@@ -896,7 +1126,14 @@ async function main() {
           activeSessions,
           supportedChains: Object.keys(chainMapping),
           uniswapV3Chains: supportedUniswapChains,
-          tools: ["getTokensBySymbols", "getUniswapV3Pools", "getSupportedChains", "getFeedAddresses", "getSupportedFeedsByChain"],
+          tools: [
+            "getTokensBySymbols",
+            "getUniswapV3Pools",
+            "getAerodromePools",
+            "getSupportedChains",
+            "getFeedAddresses",
+            "getSupportedFeedsByChain",
+          ],
           version: "1.0.0",
           graphApiKeyConfigured: !!GRAPH_API_KEY,
         });

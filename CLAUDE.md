@@ -5,34 +5,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ### Build
+
 ```bash
 npm run build
 ```
+
 Compiles TypeScript source to JavaScript in the `dist/` directory.
 
 ### Development
+
 ```bash
 npm run dev
 ```
+
 Builds and runs the server in stdio mode for development.
 
 ### Run
+
 ```bash
 npm start                 # stdio mode (default)
 npm start -- --http       # HTTP mode on port 3000 (or PORT env var)
 ```
 
 ### Health Check (HTTP mode only)
+
 ```bash
 curl http://localhost:3000/health
 ```
+
 Returns server status, active sessions, and supported chains.
 
 ## Architecture
 
-This is a **Model Context Protocol (MCP) server** built with **Express.js** that provides blockchain token data to Claude Code for dapp development. The server exposes two primary tools: `getTokensBySymbols` and `getUniswapV3Pools`.
+This is a **Model Context Protocol (MCP) server** built with **Express.js** that provides blockchain token data to Claude Code for dapp development. The server exposes three primary tools: `getTokensBySymbols`, `getUniswapV3Pools`, and `getAerodromePools`.
 
 **Key Features:**
+
 - Express-based HTTP server with MCP protocol support
 - Automatic session management with 30-minute timeout
 - Comprehensive error handling and logging
@@ -44,7 +52,7 @@ This is a **Model Context Protocol (MCP) server** built with **Express.js** that
 - **src/index.ts**: Main server implementation containing:
   - MCP server initialization and tool registration
   - Token list file reading logic (`readTokenList`)
-  - Token search functionality (`findTokensBySymbols`) 
+  - Token search functionality (`findTokensBySymbols`)
   - Transport handling (stdio and HTTP modes)
 
 - **token-lists/**: JSON files containing token data organized by chain:
@@ -56,6 +64,7 @@ This is a **Model Context Protocol (MCP) server** built with **Express.js** that
   - `Coingecko.8453.json`: Base tokens (chainId: 8453)
 
 ### Key Data Flow
+
 1. MCP tool receives array of token symbols + optional chain/list parameters
 2. Chain name maps to chainId (Ethereum → 1, Arbitrum → 42161)
 3. Reads corresponding JSON file from `token-lists/`
@@ -63,15 +72,18 @@ This is a **Model Context Protocol (MCP) server** built with **Express.js** that
 5. Returns matched tokens + list of not-found symbols
 
 ### Chain & List Mapping
+
 - Default chain: "Ethereum" (chainId: 1)
 - Default list: "Coingecko"
 - Supported chains: Ethereum, BNB Smart Chain, Gnosis, Polygon, Arbitrum, Base
 - File naming: `{listName}.{chainId}.json`
 
 ### Token Data Structure
+
 Each token contains: chainId, address, name, symbol, decimals, logoURI
 
 ### Transport Modes
+
 - **stdio** (default): Communicates via standard input/output streams for direct MCP integration
 - **HTTP**: Express server with MCP protocol support
   - MCP endpoint: `/mcp`
@@ -89,6 +101,7 @@ The server is designed for integration with Claude Code's MCP system to provide 
 Get token information by symbols from local token lists.
 
 **Input Parameters:**
+
 - `symbols` (required): Array of token symbols to search for
 - `chain` (optional): Chain name, defaults to "Ethereum"
 - `list` (optional): Token list name, defaults to "Coingecko"
@@ -98,17 +111,20 @@ Get token information by symbols from local token lists.
 Find Uniswap V3 liquidity pools by token pairs across supported networks.
 
 **Input Parameters:**
+
 - `token0` (required): First token symbol or name (e.g., "WETH", "tBTC", "Wrapped Bitcoin")
-- `token1` (required): Second token symbol or name (e.g., "USDC", "DAI", "USD Coin")  
+- `token1` (required): Second token symbol or name (e.g., "USDC", "DAI", "USD Coin")
 - `chain` (optional): Chain name, defaults to "Ethereum"
   - Supported chains: Ethereum, Polygon, Base, Arbitrum
 
 **Environment Setup:**
+
 ```bash
 export GRAPH_API_KEY=your_api_key_from_thegraph_com
 ```
 
 **Usage Examples:**
+
 ```bash
 # Find WETH/USDC pools on Ethereum
 {"tool": "getUniswapV3Pools", "token0": "WETH", "token1": "USDC"}
@@ -118,6 +134,7 @@ export GRAPH_API_KEY=your_api_key_from_thegraph_com
 ```
 
 **Response Format:**
+
 ```json
 {
   "pools": [
@@ -125,7 +142,7 @@ export GRAPH_API_KEY=your_api_key_from_thegraph_com
       "id": "0x...",
       "feeTier": "3000",
       "totalValueLockedUSD": "1234567.89",
-      "volumeUSD": "987654.32", 
+      "volumeUSD": "987654.32",
       "txCount": "12345",
       "token0": {
         "id": "0x...",
@@ -135,7 +152,7 @@ export GRAPH_API_KEY=your_api_key_from_thegraph_com
       },
       "token1": {
         "id": "0x...",
-        "symbol": "USDC", 
+        "symbol": "USDC",
         "name": "USD Coin",
         "decimals": "6"
       }
@@ -144,6 +161,64 @@ export GRAPH_API_KEY=your_api_key_from_thegraph_com
   "metadata": {
     "chain": "Ethereum",
     "totalResults": 5
+  }
+}
+```
+
+### getAerodromePools Tool
+
+Find Aerodrome liquidity pools by token pairs on Base chain.
+
+**Input Parameters:**
+
+- `token0` (required): First token symbol or name (e.g., "WETH", "USDC", "Wrapped Ether")
+- `token1` (required): Second token symbol or name (e.g., "DAI", "AERO", "USD Coin")
+
+**Note:** Aerodrome is only deployed on Base chain, so no chain parameter is needed.
+
+**Environment Setup:**
+
+```bash
+export GRAPH_API_KEY=your_api_key_from_thegraph_com
+```
+
+**Usage Examples:**
+
+```bash
+# Find WETH/USDC pools on Base
+{"tool": "getAerodromePools", "token0": "WETH", "token1": "USDC"}
+
+# Find AERO/WETH pools on Base
+{"tool": "getAerodromePools", "token0": "AERO", "token1": "WETH"}
+```
+
+**Response Format:**
+
+```json
+{
+  "pools": [
+    {
+      "id": "0x...",
+      "totalValueLockedUSD": "1234567.89",
+      "volumeUSD": "987654.32",
+      "txCount": "12345",
+      "token0": {
+        "id": "0x...",
+        "symbol": "WETH",
+        "name": "Wrapped Ether",
+        "decimals": "18"
+      },
+      "token1": {
+        "id": "0x...",
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "decimals": "6"
+      }
+    }
+  ],
+  "metadata": {
+    "chain": "Base",
+    "totalResults": 3
   }
 }
 ```
