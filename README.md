@@ -10,7 +10,7 @@ A Model Context Protocol (MCP) server that provides token data from locally stor
 - **Case-Insensitive**: Token symbol matching is case-insensitive
 
 <details>
-<summary><b>Install in Cursor</b></summary>
+<summary><b>Install in Cursor</b></summary> 
 
 Go to: `Settings` -> `Cursor Settings` -> `MCP` -> `Add new global MCP server`
 
