@@ -152,7 +152,7 @@ const supportedUniswapChains = Object.keys(uniswapV3SubgraphMapping);
 
 // The Graph subgraph ID for Aerodrome on Base
 const aerodromeSubgraphMapping: Record<string, string> = {
-  Base: "4Jqfnh2HK48KRvZ7aYmhPT6pKYKNRDp6cLjwDz6gWHaT", // Aerodrome subgraph on Base
+  Base: "GENunSHWLBXm59mBSgPzQ8metBEp9YDfdqwFr91Av1UM", // Aerodrome subgraph on Base
 };
 
 // Supported chains for Aerodrome (Base only)
